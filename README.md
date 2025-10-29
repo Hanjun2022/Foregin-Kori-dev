@@ -2,13 +2,24 @@
 
 > Connect with people in Korea and share life together
 
-# 언어 장벽 없이 한국에서 새로운 친구를 만나고, 그룹 스페이스에서 관심사를 공유하며, AI 기반 번역으로 소통하는 글로벌 소셜 플랫폼입니다.
+###  언어 장벽 없이 한국에서 새로운 친구를 만나고, 그룹 스페이스에서 관심사를 공유하며, AI 기반 번역으로 소통하는 글로벌 소셜 플랫폼입니다.
 
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/24c17924-2b4e-450d-b2f3-aef24d82db1e" />
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/9f7dee44-c02d-44ff-a37d-929c4984dc1d" />
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/f8345d7c-6fbc-4eda-ba3c-c7f011dc62d6" />
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/8c618e24-2a6f-4573-8d58-389914ab2af5" />
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/0185b87a-33dc-4c8b-a5a8-206ae6eab0ef" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/a1e3f988-43bd-4531-947d-f2c68172a959" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/a06295e9-61b0-470d-bc27-84df935cc81e" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/8741a84c-aa1e-4f20-86cb-9580877b6ef7" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/b2ae856b-ca7e-49e9-9de8-3b850591f381" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/4d331b69-6233-4e64-bf54-8c9d01d871cf" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/846e0572-58a4-4ab9-aadf-344158844e88" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/426c6de8-1667-44d7-a25c-bf52542cfeea" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/422bb186-698f-4d96-8c57-bad4df0a5e11" />
+
+
+
 
 ## ✨ Key Features
 
