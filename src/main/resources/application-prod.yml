@@ -1,0 +1,146 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  messages:
+    basename: messages
+    encoding: UTF-8
+    fallback-to-system-locale: false
+  thymeleaf:
+    encoding: UTF-8
+    prefix: classpath:/templates/
+    suffix: .html
+    check-template-location: true
+  mail:
+    host: ${NCP_MAIL_HOST}        # 네이버 SMTP 서버 주소
+    port: 587                    # 네이버 SMTP 포트 번호
+    username: ${NCP_EMAIL}    # 네이버 이메일
+    password: ${NCP_EMAIL_PASSWORD}
+    default-encoding: UTF-8
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true     # ★ 587 필수
+      mail.smtp.starttls.required: true
+      mail.smtp.ssl.enable: false
+      mail.smtp.ssl.trust: smtp.naver.com
+      mail.smtp.ssl.protocols: TLSv1.2
+      mail.debug: true
+
+  elasticsearch:
+    uris: ${SPRING_ELASTICSEARCH_URIS}
+    username: ${SPRING_ELASTICSEARCH_USERNAME}
+    password: ${SPRING_ELASTICSEARCH_PASSWORD}
+
+  data:
+    mongodb:
+      uri: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/${MONGO_INITDB_DATABASE}?authSource=admin
+
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST}
+      port: ${SPRING_DATA_REDIS_PORT}
+      password: ${SPRING_DATA_REDIS_PASSWORD}
+      key:
+        prefix:
+          refreshToken: "refreshToken:"
+          blacklist: "blacklist:"
+          accessToken: "access_token"
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-expiration: 10080
+  refresh-expiration: 10080
+
+
+cloud:
+  openfeign:
+    client:
+      config:
+        default:
+          connectTimeout: ${FEIGN_CONNECT_TIMEOUT}
+          readTimeout: ${FEIGN_READ_TIMEOUT}
+          loggerLevel: ${FEIGN_LOGGER_LEVEL}
+
+
+oauth:
+  google:
+    android:
+      client-id: ${ANDROID_CLIENT_ID}
+      redirect-uri: ${ANDROID_REDIRECT_URI}
+    ios:
+      client-id: ${IOS_CLIENT_ID}
+      redirect-uri: ${IOS_REDIRECT_URI}
+    web:
+      client-id: ${WEB_CLIENT_ID}
+      client-secret: ${WEB_CLIENT_SECRET}
+      redirect-uri: ${WEB_REDIRECT_URI}
+
+  apple:
+    issuer: https://appleid.apple.com
+    team-id: ${APPLE_TEAM_ID}
+    app-bundle-id: ${APPLE_APP_BUNDLE_ID}
+    key-id: ${APPLE_KEY_ID}
+    client-id: ${APPLE_CLIENT_ID}
+    redirect-uri: ${APPLE_REDIRECT_URI}
+    private-key-pem: |-
+      ${APPLE_PRIVATE_KEY_PEM}
+
+ncp:
+  s3:
+    access-key: ${NCP_ACCESS_KEY}
+    secret-key: ${NCP_SECRET_KEY}
+    region: kr-standard
+    endpoint: https://kr.object.ncloudstorage.com
+    bucket: ${NCP_BUCKET_NAME}
+
+swagger:
+  server-url: ${SERVER_URL}
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+google:
+  cloud:
+    project:
+      id: ${GCP_PROJECT_ID}
+
+
+logging:
+  level:
+    root: INFO
+    core.global.config.JwtTokenFilter: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.web.socket: TRACE
+    org.springframework.messaging: TRACE
+    org.apache.tomcat.websocket: DEBUG # Tomcat의 웹소켓 구현체 로그
+    core.global.search: DEBUG
+    core: INFO
+    org.springframework.web.servlet.DispatcherServlet: TRACE
+    org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping: TRACE
+
+app:
+  mail:
+    from: ${NAVER_HOST}
+    brand: ${APP_NAME}
+    code-ttl-minutes: 3
+
+  password:
+    reset:
+      ttl-minutes: 15
+      session-ttl-minutes: 5
+
+  api:
+    base-url: ${BASE_URL}

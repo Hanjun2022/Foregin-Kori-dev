@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:attr="lang=${#locale.language}">
+
+<head>
+    <meta charset="UTF-8">
+    <title th:text="#{email.verify.title(${brand})}">Email Verification</title>
+</head>
+<body style="font-family:system-ui,Apple SD Gothic Neo,apple-system,sans-serif;line-height:1.6">
+<h2 th:text="#{email.verify.title(${brand})}"></h2>
+<p th:text="#{email.verify.line1(${ttlMinutes})}"></p>
+<div style="font-size:24px;font-weight:700;letter-spacing:4px;margin:16px 0">
+    <span style="opacity:.7;margin-right:8px" th:text="#{email.verify.code.label}"></span>
+    <span th:text="${code}"></span>
+</div>
+<p th:text="#{email.verify.line2}"></p>
+</body>
+</html>

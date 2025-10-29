@@ -1,0 +1,307 @@
+name: Deploy Foreigner (Main via systemd)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      skip_es:
+        description: 'Skip Elasticsearch rollout on C server'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: deploy-foreigner-main
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate required secrets
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          PROD_REDIS_HOST: ${{ secrets.PROD_REDIS_HOST }}
+          PROD_REDIS_PORT: ${{ secrets.REDIS_PORT }}
+          PROD_REDIS_PASSWORD: ${{ secrets.PROD_REDIS_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          PROD_ELASTICSEARCH_HOST: ${{ secrets.PROD_ELASTICSEARCH_HOST }}
+          MONGODB_ATLAS_URI: ${{ secrets.MONGODB_ATLAS_URI }}
+          ES_URL_PROD: ${{ secrets.ES_URL_PROD }}
+        run: |
+          set -euo pipefail
+          req(){ [ -n "${!1:-}" ] || (echo "::error::$1 is empty" && exit 1); }
+          for v in DOCKERHUB_USERNAME DOCKERHUB_TOKEN \
+                   SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD \
+                   PROD_REDIS_HOST PROD_REDIS_PORT PROD_REDIS_PASSWORD \
+                   JWT_SECRET PROD_ELASTICSEARCH_HOST MONGODB_ATLAS_URI \
+                   ES_URL_PROD; do req "$v"; done
+          echo "preflight ok"
+
+  build:
+    needs: preflight
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      sha: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build & Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/foreigner:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/foreigner:${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/foreigner:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/foreigner:buildcache,mode=max
+
+      - name: Export image meta
+        id: meta
+        run: |
+          echo "image=${{ secrets.DOCKERHUB_USERNAME }}/foreigner:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+
+  # ✅ C 서버 러너에서 로컬로 ES 롤아웃 (SSH/SCP 제거)
+  es-rollout:
+    needs: build
+    if: ${{ github.event.inputs.skip_es != 'true' }}
+    runs-on: [ self-hosted, prod, C ]
+    env:
+      ES_URL: ${{ secrets.ES_URL_PROD }}
+      ES_AUTH: ${{ secrets.ES_AUTH_PROD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Elasticsearch rollout (local on C)
+        shell: bash
+        working-directory: infra/elasticsearch
+        run: |
+          set -euo pipefail
+          [ -n "${ES_URL:-}" ] || { echo "::error::ES_URL is empty"; exit 1; }
+          CURL_AUTH=(); [ -n "${ES_AUTH:-}" ] && CURL_AUTH=(-u "$ES_AUTH")
+
+          echo "[ES] ping"
+          curl -sS -I "${CURL_AUTH[@]}" "$ES_URL" >/dev/null
+
+          chmod -R +x scripts || true
+
+          echo "[ES] template"
+          ES_URL="$ES_URL" ES_AUTH="$ES_AUTH" bash scripts/01-apply_template.sh
+
+          echo "[ES] create index"
+          ES_URL="$ES_URL" ES_AUTH="$ES_AUTH" bash scripts/02-create_index.sh
+          NEW_IDX="$(cat .last_posts_index)"
+          echo "[ES] new index=${NEW_IDX}"
+
+          SRC_ALIAS="posts_search"
+          if ! curl -s -o /dev/null -w "%{http_code}" "${CURL_AUTH[@]}" "${ES_URL}/_alias/${SRC_ALIAS}" | grep -q '^20'; then
+            SRC_ALIAS="posts_lab"
+          fi
+
+          echo "[ES] reindex from ${SRC_ALIAS}"
+          curl -sS -X POST -H 'Content-Type: application/json' "${CURL_AUTH[@]}" \
+            "${ES_URL}/_reindex?wait_for_completion=true&refresh=true" \
+            -d "{\"source\":{\"index\":\"${SRC_ALIAS}\"},\"dest\":{\"index\":\"${NEW_IDX}\"}}"
+
+          echo "[ES] switch aliases"
+          ES_URL="$ES_URL" ES_AUTH="$ES_AUTH" NEW_INDEX="$NEW_IDX" \
+            bash scripts/03-switch_alias.sh
+
+          echo "[ES] cleanup keep last 1"
+          ES_URL="$ES_URL" ES_AUTH="$ES_AUTH" INDEX_PREFIX="posts-lab" KEEP_LAST=1 DRY_RUN=0 NEW_INDEX="$NEW_IDX" \
+            bash scripts/04-cleanup_keep_last.sh
+
+          echo "[ES] verify"
+          ES_URL="$ES_URL" ES_AUTH="$ES_AUTH" bash scripts/99-verify.sh
+
+  # ✅ A/B 서버 러너에서 로컬 배포 (systemd + docker)
+  deploy:
+    needs: build
+    strategy:
+      max-parallel: 1         # ← matrix 바깥
+      matrix:
+        target: [ B, A ]      # B 먼저 -> A
+        include:
+          - target: A
+            labels: [ self-hosted, prod, A ]
+            need_es: false
+            need_mongo: true
+          - target: B
+            labels: [ self-hosted, prod, B ]
+            need_es: true
+            need_mongo: false
+    runs-on: ${{ matrix.labels }}
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      IMAGE: ${{ needs.build.outputs.image }}
+
+      SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+      SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+      SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+
+      SPRING_DATA_REDIS_HOST: ${{ secrets.PROD_REDIS_HOST }}
+      SPRING_DATA_REDIS_PORT: ${{ secrets.PROD_REDIS_PORT }}
+      SPRING_DATA_REDIS_PASSWORD: ${{ secrets.PROD_REDIS_PASSWORD }}
+
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      ELASTICSEARCH_HOST: ${{ secrets.PROD_ELASTICSEARCH_HOST }}
+      SERVER_URL: ${{ secrets.PROD_SERVER_URL }}
+      MONGODB_ATLAS_URI: ${{ secrets.MONGODB_ATLAS_URI }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy locally on ${{ matrix.target }}
+        shell: bash
+        env:
+          IMAGE_FROM_BUILD: ${{ needs.build.outputs.image }}   # build job 출력(없을 수도 있으니 fallback 씀)
+          SHA_FROM_BUILD: ${{ needs.build.outputs.sha }}
+        run: |
+          set -euo pipefail
+          
+          echo "IMAGE from build(raw): '${IMAGE_FROM_BUILD}'"
+          if [ -n "${IMAGE_FROM_BUILD:-}" ]; then
+            IMAGE_EFF="$IMAGE_FROM_BUILD"
+          else
+            IMAGE_EFF="${DOCKERHUB_USERNAME}/foreigner:${SHA_FROM_BUILD:-$GITHUB_SHA}"
+          fi
+          echo "IMAGE effective: ${IMAGE_EFF}"
+                             
+          command -v docker >/dev/null || { echo "::error::docker not found"; exit 1; }
+          echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
+          # 1) env 파일
+          sudo mkdir -p /etc/foreigner
+          
+          # IMAGE= 만 변수 확장 필요 → printf로 먼저 씀
+          sudo bash -c "printf 'IMAGE=%s\n' \"$IMAGE_EFF\" > /etc/foreigner/foreigner.env"
+          # 나머지는 확장 방지 위해 'EOF' 사용(Secrets는 GitHub가 미리 치환함)
+          sudo tee -a /etc/foreigner/foreigner.env > /dev/null <<'EOF'
+          
+          # NCP PostgreSQL
+          SPRING_DATASOURCE_URL=${{ secrets.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME=${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD=${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          
+          # NCP Redis
+          SPRING_DATA_REDIS_HOST=${{ secrets.PROD_REDIS_HOST }}
+          SPRING_DATA_REDIS_PORT=${{ secrets.REDIS_PORT }}
+          SPRING_DATA_REDIS_PASSWORD=${{ secrets.PROD_REDIS_PASSWORD }}
+          
+          # App
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          
+          SERVER_URL=${{ secrets.PROD_SERVER_URL }}
+          
+          # OAuth/기타 시크릿도 모두 따옴표 없이!
+          ANDROID_CLIENT_ID=${{ secrets.ANDROID_CLIENT_ID }}
+          ANDROID_REDIRECT_URI=${{ secrets.ANDROID_REDIRECT_URI }}
+          IOS_CLIENT_ID=${{ secrets.IOS_CLIENT_ID }}
+          IOS_REDIRECT_URI=${{ secrets.IOS_REDIRECT_URI }}
+          WEB_CLIENT_ID=${{ secrets.WEB_CLIENT_ID }}
+          WEB_CLIENT_SECRET=${{ secrets.WEB_CLIENT_SECRET }}
+          WEB_REDIRECT_URI=${{ secrets.WEB_REDIRECT_URI }}
+          APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}
+          APPLE_KEY_ID=${{ secrets.APPLE_KEY_ID }}
+          APPLE_CLIENT_ID=${{ secrets.APPLE_CLIENT_ID }}
+          APPLE_REDIRECT_URI=${{ secrets.APPLE_REDIRECT_URI }}
+          APPLE_PRIVATE_KEY_PEM=${{ secrets.APPLE_PRIVATE_KEY_PEM }}
+          APPLE_APP_BUNDLE_ID=${{ secrets.APPLE_APP_BUNDLE_ID }}
+          NCP_ACCESS_KEY=${{ secrets.NCP_ACCESS_KEY }}
+          NCP_SECRET_KEY=${{ secrets.NCP_SECRET_KEY }}
+          NCP_BUCKET_NAME=${{ secrets.NCP_BUCKET_NAME }}
+          NCP_MAIL_HOST=${{ secrets.NCP_MAIL_HOST }}
+          NCP_EMAIL=${{ secrets.NCP_EMAIL }}
+          NCP_EMAIL_PASSWORD=${{ secrets.NCP_EMAIL_PASSWORD }}
+          FEIGN_CONNECT_TIMEOUT=${{ secrets.FEIGN_CONNECT_TIMEOUT }}
+          FEIGN_READ_TIMEOUT=${{ secrets.FEIGN_READ_TIMEOUT }}
+          FEIGN_LOGGER_LEVEL=${{ secrets.FEIGN_LOGGER_LEVEL }}
+          GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+          GCP_TRANSLATE_API_KEY=${{ secrets.GCP_TRANSLATE_API_KEY }}
+          NAVER_HOST=${{ secrets.NAVER_HOST }}
+          APP_NAME=${{ secrets.APP_NAME }}
+          BASE_URL=${{ secrets.BASE_URL }}
+          
+          SPRING_PROFILES_ACTIVE=prod
+          JAVA_TOOL_OPTIONS=-Xms512m -Xmx1024m
+          APP_PORT=8080
+          EOF
+          
+          
+          # 1-1) ES 필요 시(A=불필요, B=필요)
+          if [ "${{ matrix.need_es }}" = "true" ]; then
+           sudo tee -a /etc/foreigner/foreigner.env > /dev/null <<'EOF'
+          ELASTICSEARCH_HOST=${{ secrets.PROD_ELASTICSEARCH_HOST }}
+          SPRING_ELASTICSEARCH_URIS=${{ secrets.PROD_ELASTICSEARCH_HOST }}
+          SPRING_ELASTICSEARCH_USERNAME=${{ secrets.PROD_ELASTICSEARCH_USERNAME }}
+          SPRING_ELASTICSEARCH_PASSWORD=${{ secrets.PROD_ELASTICSEARCH_PASSWORD }}
+          EOF
+          else
+           sudo tee -a /etc/foreigner/foreigner.env > /dev/null <<'EOF'
+          MANAGEMENT_HEALTH_ELASTICSEARCH_ENABLED=false
+          EOF
+          fi
+          
+          # 1-2) Mongo 필요 시(B=불필요, A=필요)
+          if [ "${{ matrix.need_mongo }}" = "true" ]; then
+            sudo tee -a /etc/foreigner/foreigner.env > /dev/null <<'EOF'
+          SPRING_DATA_MONGODB_URI=${{ secrets.MONGODB_ATLAS_URI }}
+          EOF
+          else
+            sudo tee -a /etc/foreigner/foreigner.env > /dev/null <<'EOF'
+          MANAGEMENT_HEALTH_MONGODB_ENABLED=false
+          EOF
+          fi
+          
+          sudo chgrp docker /etc/foreigner/foreigner.env 2>/dev/null || true
+          sudo chmod 640 /etc/foreigner/foreigner.env
+
+          # 2) systemd 유닛
+          sudo bash -c 'cat > /etc/systemd/system/foreigner.service' <<'EOF'
+          [Unit]
+          Description=Foreigner App (Docker)
+          After=docker.service network-online.target
+          Wants=network-online.target docker.service
+
+          [Service]
+          EnvironmentFile=/etc/foreigner/foreigner.env
+          Restart=always
+          TimeoutStartSec=0
+          ExecStartPre=-/usr/bin/docker rm -f foreigner
+          ExecStartPre=/usr/bin/docker pull ${IMAGE}
+          ExecStart=/usr/bin/docker run --name foreigner \
+            -p ${APP_PORT}:8080 \
+            --env-file /etc/foreigner/foreigner.env \
+            --restart always \
+            ${IMAGE}
+          ExecStop=/usr/bin/docker stop foreigner
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          sudo systemctl daemon-reload
+          sudo systemctl enable foreigner || true
+          sudo systemctl restart foreigner
+
+          # 3) 헬스체크
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then
+              echo "Health: UP"; exit 0
+            fi
+            echo "Waiting health... ($i/30)"; sleep 2
+          done
+          echo "Health check failed"
+          journalctl -u foreigner --no-pager -n 200
+          exit 1

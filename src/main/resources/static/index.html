@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Chat UI — Demo</title>
+    <style>
+        :root{--bg:#0f1720;--panel:#0b1220;--muted:#94a3b8;--accent:#06b6d4;--glass:rgba(255,255,255,0.03)}
+        html,body{height:100%;margin:0;background:linear-gradient(180deg,#071124 0%, #071933 100%);font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#e6eef6}
+        .app{display:flex;height:100vh;gap:18px;padding:18px;box-sizing:border-box}
+
+        /* left: rooms */
+        .rooms{width:320px;background:var(--panel);border-radius:12px;padding:12px;box-shadow:0 6px 20px rgba(2,6,23,0.6);display:flex;flex-direction:column;gap:10px}
+        .rooms h2{margin:0;font-size:16px}
+        .searchBox{display:flex;gap:8px}
+        .searchBox input{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:var(--glass);color:inherit}
+        .btn{background:var(--accent);color:#022;border:none;padding:8px 10px;border-radius:8px;cursor:pointer}
+        .roomsList{overflow:auto;flex:1;padding-top:6px}
+        .roomItem{padding:8px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer}
+        .roomItem:hover{background:rgba(255,255,255,0.02)}
+        .roomMeta{font-size:13px;color:var(--muted)}
+
+        /* center: messages */
+        .chat{flex:1;display:flex;flex-direction:column;background:var(--panel);border-radius:12px;padding:12px;gap:12px}
+        .chatHeader{display:flex;justify-content:space-between;align-items:center}
+        .messages{flex:1;overflow:auto;padding:8px;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent);border-radius:8px}
+        .msg{padding:8px 12px;margin:8px 0;border-radius:12px;max-width:70%;word-break:break-word}
+        .msg.me{background:linear-gradient(90deg,#096b77,#06b6d4);color:#001821;margin-left:auto}
+        .msg.others{background:rgba(255,255,255,0.03)}
+        .msg .meta{font-size:11px;color:var(--muted);margin-bottom:6px}
+
+        .composer{display:flex;gap:8px}
+        .composer input{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+
+        /* right: tools */
+        .tools{width:300px;background:var(--panel);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
+        .small{font-size:13px;color:var(--muted)}
+        .msgActions{display:flex;gap:6px}
+        .iconBtn{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:6px;border-radius:8px;color:var(--muted);cursor:pointer}
+
+        /* responsive */
+        @media (max-width:900px){.rooms{display:none}.tools{display:none}}
+    </style>
+</head>
+<body>
+<div class="app">
+    <aside class="rooms">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+            <h2>채팅방</h2>
+            <button id="btnCreateRoom" class="btn">새 방</button>
+        </div>
+
+        <div class="searchBox">
+            <input id="roomSearch" placeholder="방 검색 또는 유저 검색" />
+            <button id="btnSearchRoom" class="iconBtn">🔍</button>
+        </div>
+
+        <div class="roomsList" id="roomsList">
+            <!-- room items injected here -->
+        </div>
+    </aside>
+
+    <main class="chat">
+        <div class="chatHeader">
+            <div>
+                <div id="roomTitle">선택된 채팅방 없음</div>
+                <div class="small" id="roomSubtitle">1:1 or 그룹</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+                <input id="msgSearch" placeholder="메시지 검색" />
+                <button id="btnSearchMsg" class="iconBtn">🔎</button>
+                <button id="btnDeleteRoom" class="iconBtn">방 삭제</button>
+            </div>
+        </div>
+
+        <div class="messages" id="messages">
+            <!-- messages go here -->
+        </div>
+
+        <div class="composer">
+            <input id="messageInput" placeholder="메시지를 입력하세요" />
+            <button id="btnSend" class="btn">전송</button>
+        </div>
+    </main>
+
+    <aside class="tools">
+        <div>
+            <strong>활성 방 정보</strong>
+            <div class="small" id="activeRoomInfo">없음</div>
+        </div>
+
+        <div>
+            <strong>도움말</strong>
+            <div class="small">- 메시지 클릭 시 삭제 아이콘 표시
+                - 모바일은 WebSocket 권장
+                - API 엔드포인트는 /api/rooms, /api/rooms/:id/messages</div>
+        </div>
+    </aside>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+<script>
+    // ====== 설정 (백엔드 엔드포인트 & 현재 유저) ======
+    const API_BASE = 'http://localhost:8080/api/v1'; // NOTE: /chat 부분을 각 API 경로에 포함시킴
+    const WS_ENDPOINT = '/ws'; // NOTE: SockJS 엔드포인트
+    const currentUser = { id: 1, name: 'me' }; // NOTE: 실제 로그인 유저 정보로 대체 필요
+
+    // ====== 앱 상태 관리 ======
+    const state = {
+        rooms: [],
+        activeRoomId: null,
+        stompClient: null,
+    };
+
+    // ====== 유틸리티 함수 ======
+    function el(tag, props = {}, ...children) {
+        const node = document.createElement(tag);
+        Object.entries(props).forEach(([key, value]) => {
+            if (key.startsWith('on')) {
+                node.addEventListener(key.slice(2).toLowerCase(), value);
+            } else {
+                node[key] = value;
+            }
+        });
+        children.forEach(child => {
+            if (typeof child === 'string') {
+                node.appendChild(document.createTextNode(child));
+            } else if (child) {
+                node.appendChild(child);
+            }
+        });
+        return node;
+    }
+
+    // ====== 채팅방 (Rooms) 관련 함수 ======
+    async function loadRooms(query = '') {
+        try {
+            const res = await fetch(`${API_BASE}/chat/rooms?q=${encodeURIComponent(query)}`);
+            if (!res.ok) throw new Error(`Rooms fetch error: ${res.statusText}`);
+            const result = await res.json();
+            state.rooms = result.data || [];
+        } catch (e) {
+            console.error('Failed to load rooms', e);
+            state.rooms = [];
+            alert('채팅방 목록을 불러오는데 실패했습니다.');
+        }
+        renderRooms();
+    }
+
+    function renderRooms() {
+        const container = document.getElementById('roomsList');
+        container.innerHTML = '';
+        state.rooms.forEach(room => {
+            const item = el('div', {
+                    className: `roomItem ${room.id === state.activeRoomId ? 'active' : ''}`,
+                    onclick: () => openRoom(room.id)
+                },
+                el('div', {}, room.title || '(제목 없음)'),
+                el('div', { className: 'roomMeta' }, room.type || '')
+            );
+            const delBtn = el('button', {
+                className: 'iconBtn',
+                onclick: (ev) => {
+                    ev.stopPropagation();
+                    deleteRoom(room.id);
+                }
+            }, '🗑');
+            item.appendChild(delBtn);
+            container.appendChild(item);
+        });
+    }
+
+    async function createRoom() {
+        const isGroup = confirm('그룹 채팅방인가요? (취소하면 1:1 채팅방)');
+        const participantInput = prompt(isGroup ? '참여자 ID를 쉼표로 구분하여 입력하세요 (예: 2,3,4)' : '상대방의 ID를 입력하세요.');
+        if (!participantInput) return alert('참여자 ID를 입력해야 합니다.');
+
+        const participantIds = participantInput.split(',').map(id => Number(id.trim()));
+        if (!isGroup) {
+            participantIds.push(currentUser.id); // 1:1 채팅 시 자신을 포함
+        }
+
+        const body = participantIds.map(id => ({ id }));
+
+        try {
+            const res = await fetch(`${API_BASE}/chat/rooms?isGroup=${isGroup}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if (!res.ok) throw new Error(`Create room failed: ${res.statusText}`);
+
+            const result = await res.json();
+            const newRoom = result.data;
+            state.rooms.unshift(newRoom);
+            renderRooms();
+            openRoom(newRoom.id);
+        } catch (e) {
+            console.error('Failed to create room', e);
+            alert('채팅방 생성에 실패했습니다.');
+        }
+    }
+
+    async function deleteRoom(roomId) {
+        if (!confirm('정말 방을 삭제하시겠습니까?')) return;
+        try {
+            const res = await fetch(`${API_BASE}/chat/rooms/${roomId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error(`Delete room failed: ${res.statusText}`);
+
+            state.rooms = state.rooms.filter(r => r.id !== roomId);
+            if (state.activeRoomId === roomId) {
+                closeRoom();
+            }
+            renderRooms();
+        } catch (e) {
+            console.error('Failed to delete room', e);
+            alert('채팅방 삭제에 실패했습니다.');
+        }
+    }
+
+    // ====== 메시지 (Messages) 관련 함수 ======
+    async function openRoom(roomId) {
+        if (state.activeRoomId === roomId) return;
+
+        state.activeRoomId = roomId;
+        const room = state.rooms.find(r => r.id === roomId);
+
+        document.getElementById('roomTitle').innerText = room?.title || '대화방';
+        document.getElementById('roomSubtitle').innerText = room?.type || '';
+        document.getElementById('messages').innerHTML = '메시지를 불러오는 중...';
+
+        renderRooms(); // 활성화된 방 UI 업데이트
+        await loadMessages(roomId);
+        connectWs(roomId);
+    }
+
+    function closeRoom() {
+        state.activeRoomId = null;
+        document.getElementById('roomTitle').innerText = '선택된 채팅방 없음';
+        document.getElementById('roomSubtitle').innerText = '';
+        document.getElementById('messages').innerHTML = '';
+        if (state.stompClient) {
+            state.stompClient.disconnect();
+            state.stompClient = null;
+        }
+    }
+
+    async function loadMessages(roomId, query = '') {
+        try {
+            const res = await fetch(`${API_BASE}/chat/rooms/${roomId}/messages?q=${encodeURIComponent(query)}`);
+            if (!res.ok) throw new Error(`Load messages failed: ${res.statusText}`);
+            const messages = await res.json(); // API 응답이 메시지 목록 자체라고 가정
+            renderMessages(messages.data || []);
+        } catch (e) {
+            console.error('Failed to load messages', e);
+            document.getElementById('messages').innerHTML = '<div class="error">메시지를 불러오지 못했습니다.</div>';
+        }
+    }
+
+    // NEW: 메시지 DOM 요소를 생성하는 헬퍼 함수
+    function createMessageElement(message) {
+        const isMe = message.senderId === currentUser.id;
+        const senderName = message.senderName || 'Anonymity';
+        const time = message.createdAt ? new Date(message.createdAt).toLocaleTimeString() : '';
+
+        return el('div', { className: `msg ${isMe ? 'me' : 'others'}`, 'data-message-id': message.id },
+            el('div', { className: 'meta' }, `${senderName} • ${time}`),
+            el('div', {}, message.content || ''),
+            el('div', { className: 'msgActions' },
+                el('button', { className: 'iconBtn', onclick: () => deleteMessage(message.id) }, '삭제')
+            )
+        );
+    }
+
+
+    function renderMessages(messages) {
+        const box = document.getElementById('messages');
+        box.innerHTML = '';
+        messages.forEach(msg => box.appendChild(createMessageElement(msg)));
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function appendMessage(message) {
+        const box = document.getElementById('messages');
+        box.appendChild(createMessageElement(message));
+        box.scrollTop = box.scrollHeight;
+    }
+
+    // FIXED: sendMessage 함수 통합
+    async function sendMessage() {
+        const input = document.getElementById('messageInput');
+        const text = input.value.trim();
+        if (!text || !state.activeRoomId) return;
+
+        const payload = {
+            roomId: state.activeRoomId,
+            senderId: currentUser.id,
+            content: text
+        };
+
+        // WebSocket이 연결되어 있으면 STOMP로 전송
+        if (state.stompClient && state.stompClient.connected) {
+            state.stompClient.send("/app/chat.sendMessage", {}, JSON.stringify(payload));
+            input.value = '';
+        } else {
+            // 연결 안되어 있으면 HTTP POST로 전송 (폴백)
+            console.warn("WebSocket not connected. Sending via HTTP.");
+            try {
+                const res = await fetch(`${API_BASE}/chat/rooms/${state.activeRoomId}/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) throw new Error('Send message via HTTP failed');
+                const savedMessage = await res.json();
+                appendMessage(savedMessage.data);
+                input.value = '';
+            } catch (e) {
+                console.error('Failed to send message via HTTP', e);
+                alert('메시지 전송에 실패했습니다. 연결을 확인해주세요.');
+            }
+        }
+    }
+
+    async function deleteMessage(messageId) {
+        if (!confirm('이 메시지를 삭제하시겠습니까?')) return;
+        try {
+            const res = await fetch(`${API_BASE}/chat/messages/${messageId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Delete message failed');
+
+            // CHANGED: 전체 리로드 대신 해당 메시지 DOM만 제거
+            const msgElement = document.querySelector(`[data-message-id='${messageId}']`);
+            if (msgElement) {
+                msgElement.remove();
+            }
+        } catch (e) {
+            console.error('Failed to delete message', e);
+            alert('메시지 삭제에 실패했습니다.');
+        }
+    }
+
+    // ====== WebSocket 관련 함수 ======
+    function connectWs(roomId) {
+        if (state.stompClient) {
+            state.stompClient.disconnect();
+        }
+
+        const socket = new SockJS(WS_ENDPOINT);
+        state.stompClient = Stomp.over(socket);
+
+        state.stompClient.connect({}, (frame) => {
+            console.log('Connected: ' + frame);
+            state.stompClient.subscribe(`/topic/rooms/${roomId}`, (message) => {
+                const newMessage = JSON.parse(message.body);
+                // 내가 보낸 메시지는 stomp로 받지 않고 appendMessage에서 바로 처리하므로 중복 방지
+                if(newMessage.from?.id !== currentUser.id){
+                    appendMessage(newMessage);
+                }
+            });
+        }, (error) => {
+            console.error('STOMP connection error:', error);
+        });
+    }
+
+    // ====== UI 이벤트 핸들러 초기화 ======
+    function initialize() {
+        document.getElementById('btnCreateRoom').addEventListener('click', createRoom);
+        document.getElementById('btnSend').addEventListener('click', sendMessage);
+
+        document.getElementById('btnDeleteRoom').addEventListener('click', () => {
+            if (state.activeRoomId) deleteRoom(state.activeRoomId);
+        });
+
+        document.getElementById('messageInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        document.getElementById('btnSearchRoom').addEventListener('click', () => {
+            loadRooms(document.getElementById('roomSearch').value.trim());
+        });
+
+        document.getElementById('btnSearchMsg').addEventListener('click', () => {
+            const query = document.getElementById('msgSearch').value.trim();
+            if (!state.activeRoomId) return alert('방을 선택해주세요');
+            loadMessages(state.activeRoomId, query);
+        });
+
+        // 초기 데이터 로드
+        loadRooms();
+    }
+
+    // DOM이 로드된 후 앱 초기화 실행
+    document.addEventListener('DOMContentLoaded', initialize);
+</script>
+
+</body>
+</html>

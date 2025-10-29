@@ -1,0 +1,357 @@
+name: Deploy Foreigner (Dev via Docker Compose)
+
+on:
+  push:
+    branches: [ dev ]
+
+concurrency:
+  group: deploy-foreigner-dev
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate required secrets
+        run: |
+          test -n "${{ secrets.DOCKERHUB_USERNAME }}" || (echo "DOCKERHUB_USERNAME is empty" && exit 1)
+          test -n "${{ secrets.DOCKERHUB_TOKEN }}"     || (echo "DOCKERHUB_TOKEN is empty" && exit 1)
+          test -n "${{ secrets.DEV_HOST }}"            || (echo "DEV_HOST is empty" && exit 1)
+          test -n "${{ secrets.DEV_USER }}"            || (echo "DEV_USER is empty" && exit 1)
+          test -n "${{ secrets.DEV_SSH_KEY }}"         || (echo "DEV_SSH_KEY is empty" && exit 1)
+          test -n "${{ secrets.DB_NAME }}"             || (echo "DB_NAME is empty" && exit 1)
+          test -n "${{ secrets.DB_USER }}"             || (echo "DB_USER is empty" && exit 1)
+          test -n "${{ secrets.DB_PASSWORD }}"         || (echo "DB_PASSWORD is empty" && exit 1)
+          test -n "${{ secrets.JWT_SECRET }}"          || (echo "JWT_SECRET is empty" && exit 1)
+          test -n "${{ secrets.DEV_SUDO_PASSWORD }}"   || (echo "DEV_SUDO_PASSWORD is empty" && exit 1)
+          echo "All required secrets are set."
+
+  quality:
+    needs: preflight
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U testuser -d testdb"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Gradle Wrapper Validate
+        uses: gradle/actions/wrapper-validation@v3
+        continue-on-error: true
+        timeout-minutes: 5
+
+      - name: Show Postgres health & container info
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y postgresql-client jq
+          CID="$(docker ps -q --filter 'ancestor=postgres:16' | head -n1)"
+          echo "Postgres Container ID: $CID"
+          docker inspect "$CID" | jq -r '.[0].State.Health.Status'
+          docker ps --format 'table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}'
+
+      - name: Run preflight (tests + coverage)
+        env:
+          CI: "true"
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/testdb
+          SPRING_DATASOURCE_USERNAME: testuser
+          SPRING_DATASOURCE_PASSWORD: testpass
+        run: |
+          until pg_isready -h localhost -p 5432 -U testuser -d testdb; do
+            echo "Waiting for Postgres..."; sleep 2;
+          done
+          PGPASSWORD=testpass psql -h localhost -p 5432 -U testuser -d testdb -c "select version(), current_database(), inet_server_addr(), inet_server_port();"
+          ./gradlew --no-daemon clean preflight "-Dspring.profiles.active=test" "-Dorg.gradle.jvmargs=-Xmx2g"
+
+      - name: Dump Postgres logs & ps (before job teardown)
+        if: always()
+        run: |
+          CID="$(docker ps -q --filter 'ancestor=postgres:16' | head -n1 || true)"
+          if [ -n "$CID" ]; then
+            echo "--- docker logs (tail) ---"
+            docker logs --tail 200 "$CID" || true
+          fi
+          echo "--- docker ps ---"
+          docker ps || true
+          echo "NOTE: 서비스 컨테이너는 이 스텝 이후, 잡 종료 시 자동 정리됩니다."
+
+  build:
+    needs: [ preflight, quality ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/foreigner:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/foreigner:${{ github.sha }}
+          cache-from: |
+            type=gha
+            type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/foreigner:buildcache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/foreigner:buildcache,mode=max
+
+
+  deploy-app:
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Deploy (Docker Compose, blue/green via gateway)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.DEV_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            command -v docker >/dev/null || (echo "docker not found" && exit 1)
+            docker compose version || (echo "docker compose not found" && exit 1)
+            
+            mkdir -p ~/foreigner
+            cd ~/foreigner
+            
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+            echo "${{ secrets.GCP_SA_KEY_JSON }}" | base64 --decode > gcp-key.json
+            
+            IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/foreigner:${{ github.sha }}"
+            : "${IMAGE:?IMAGE is empty}"
+            echo "Using IMAGE=${IMAGE}"
+            
+            # 공통 .env
+            cat > .env <<'EOF'
+            DB_NAME=${{ secrets.DB_NAME }}
+            DB_USERNAME=${{ secrets.DB_USER }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            
+            SPRING_DATA_REDIS_HOST=${{ secrets.REDIS_HOST }}
+            SPRING_DATA_REDIS_PORT=${{ secrets.REDIS_PORT }}
+            SPRING_DATA_REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+            
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            
+            ANDROID_CLIENT_ID=${{ secrets.ANDROID_CLIENT_ID }}
+            ANDROID_REDIRECT_URI=${{ secrets.ANDROID_REDIRECT_URI }}
+            IOS_CLIENT_ID=${{ secrets.IOS_CLIENT_ID }}
+            IOS_REDIRECT_URI=${{ secrets.IOS_REDIRECT_URI }}
+            WEB_CLIENT_ID=${{ secrets.WEB_CLIENT_ID }}
+            WEB_CLIENT_SECRET=${{ secrets.WEB_CLIENT_SECRET }}
+            WEB_REDIRECT_URI=${{ secrets.WEB_REDIRECT_URI }}
+            
+            APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}
+            APPLE_KEY_ID=${{ secrets.APPLE_KEY_ID }}
+            APPLE_CLIENT_ID=${{ secrets.APPLE_CLIENT_ID }}
+            APPLE_REDIRECT_URI=${{ secrets.APPLE_REDIRECT_URI }}
+            APPLE_APP_BUNDLE_ID=${{ secrets.APPLE_APP_BUNDLE_ID }}
+            
+            NCP_ACCESS_KEY=${{ secrets.NCP_ACCESS_KEY }}
+            NCP_SECRET_KEY=${{ secrets.NCP_SECRET_KEY }}
+            NCP_BUCKET_NAME=${{ secrets.NCP_BUCKET_NAME }}
+            NCP_CDN_URL=${{ secrets.NCP_CDN_URL }}
+            
+            NCP_MAIL_HOST=${{ secrets.NCP_MAIL_HOST }}
+            NCP_EMAIL=${{ secrets.NCP_EMAIL }}
+            NCP_EMAIL_PASSWORD=${{ secrets.NCP_EMAIL_PASSWORD }}
+            
+            GOOGLE_MAIL_HOST=${{ secrets.GOOGLE_MAIL_HOST }}
+            GOOGLE_EMAIL=${{ secrets.GOOGLE_EMAIL }}
+            GOOGLE_EMAIL_PASSWORD=${{ secrets.GOOGLE_EMAIL_PASSWORD }}
+            CLOVA_STUDIO_API_KEY=${{ secrets.CLOVA_STUDIO_API_KEY }}
+            
+            FEIGN_CONNECT_TIMEOUT=${{ secrets.FEIGN_CONNECT_TIMEOUT }}
+            FEIGN_READ_TIMEOUT=${{ secrets.FEIGN_READ_TIMEOUT }}
+            FEIGN_LOGGER_LEVEL=${{ secrets.FEIGN_LOGGER_LEVEL }}
+            
+            FIREBASE_CREDENTIALS_JSON_PATH=./firebase.json
+            SERVER_URL=${{ secrets.SERVER_URL }}
+            
+            GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+            GCP_TRANSLATE_API_KEY=${{ secrets.GCP_TRANSLATE_API_KEY }}
+            
+            NAVER_HOST=${{ secrets.NAVER_HOST }}
+            APP_NAME=${{ secrets.APP_NAME }}
+            GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}
+            BASE_URL=${{ secrets.BASE_URL }}
+            
+            PINPOINT_APP_NAME=${{ secrets.PINPOINT_APP_NAME }}
+            PINPOINT_AGENT_ID=${{ secrets.PINPOINT_AGENT_ID }}
+            
+            SPRING_PROFILES_ACTIVE=dev
+            JAVA_TOOL_OPTIONS="-Xms256m -Xmx512m -javaagent:/pinpoint-agent/pinpoint-bootstrap.jar -Dpinpoint.applicationName=${PINPOINT_APP_NAME} -Dpinpoint.agentId=${PINPOINT_AGENT_ID} -Dpinpoint.config=/pinpoint-agent/pinpoint-root.config -Dpinpoint.logdir=/tmp/pinpoint-logs"
+            EOF
+            
+            cat > apple_key.pem <<PEM
+            ${{ secrets.APPLE_PRIVATE_KEY_PEM }}
+            PEM
+            
+            PEM_CONTENT=$(awk 'NF {printf "%s", $0}' apple_key.pem)
+            echo "APPLE_PRIVATE_KEY_PEM=\"$PEM_CONTENT\"" >> .env
+            
+            cat > firebase.json <<'JSON'
+            ${{ secrets.FIREBASE_CREDENTIALS_JSON }}
+            JSON
+            
+            if command -v jq >/dev/null 2>&1; then
+              FIREBASE_JSON_COMPACT="$(jq -c . < firebase.json)"
+            else
+              FIREBASE_JSON_COMPACT="$(tr -d '\n' < firebase.json)"
+            fi
+            # 공백/특수문자 안전하게 기록
+
+            # 이미지 변수는 .env에 한 번만 기록
+            {
+              echo "IMAGE=${IMAGE}"
+              echo "IMAGE_BLUE=${IMAGE}"
+              echo "IMAGE_GREEN=${IMAGE}"
+            } >> .env
+            echo "FIREBASE_CREDENTIALS_JSON=${FIREBASE_JSON_COMPACT}" >> .env
+            chmod 600 .env apple_key.pem firebase.json || true
+            
+            # compose/네트워크 확인
+            COMPOSE_APP="docker-compose.app.yml"
+            test -f "$COMPOSE_APP" || { echo "missing $COMPOSE_APP"; exit 1; }
+            docker network inspect foreigner_net >/dev/null 2>&1 || docker network create foreigner_net
+            
+            # --- 필수 변수/상태 초기화 ---------------------------------------------------------
+            : "${COMPOSE_APP:?COMPOSE_APP is required}"   # COMPOSE_APP 미설정 보호
+            
+            ACTIVE_FILE="nginx/conf.d/.active"
+            # 폴더 없을 수 있으니 보호
+            mkdir -p "$(dirname "$ACTIVE_FILE")"
+            
+            if [ -f "$ACTIVE_FILE" ]; then
+              ACTIVE_SLOT="$(tr -d '\n' < "$ACTIVE_FILE")"
+            else
+              ACTIVE_SLOT="blue"
+              printf '%s\n' "$ACTIVE_SLOT" > "$ACTIVE_FILE"
+            fi
+            
+            case "$ACTIVE_SLOT" in
+              blue)  NEXT_SLOT="green" ;;
+              green) NEXT_SLOT="blue"  ;;
+              *)     echo "WARN: unknown ACTIVE_SLOT=$ACTIVE_SLOT -> default NEXT_SLOT=green" >&2
+                     NEXT_SLOT="green" ;;
+            esac
+            
+            export ACTIVE_SLOT NEXT_SLOT
+            echo "ACTIVE_SLOT=$ACTIVE_SLOT, NEXT_SLOT=$NEXT_SLOT"
+            # -------------------------------------------------------------------------------
+            
+            # --- 0) 다음 슬롯 기동 + 헬스 대기 ------------------------------------------------
+            docker compose -p foreigner -f "$COMPOSE_APP" up -d "app-$NEXT_SLOT"
+            
+            GW_ID="$(docker compose -p foreigner -f "$COMPOSE_APP" ps -q gateway)"
+            
+            # 게이트웨이에서 Docker DNS에 등록되었는지 먼저 확인(최대 60초)
+            for i in $(seq 1 60); do
+            if docker exec "$GW_ID" getent hosts "app-$NEXT_SLOT" >/dev/null 2>&1; then
+            break
+            fi
+            sleep 1
+            done
+            
+            # --- 1) 활성 슬롯 교체 (변수 한 줄만 토글) ---------------------------------------
+            if [ "$NEXT_SLOT" = "blue" ]; then
+            sed -i -E 's|^([[:space:]]*set[[:space:]]+\$active_upstream[[:space:]]+).*$|\1http://app-blue:8080;|' nginx/conf.d/default.conf
+            else
+            sed -i -E 's|^([[:space:]]*set[[:space:]]+\$active_upstream[[:space:]]+).*$|\1http://app-green:8080;|' nginx/conf.d/default.conf
+            fi
+            
+            # --- 2) 게이트웨이 reload ----------------------------------------------------------
+            docker exec "$GW_ID" nginx -t
+            docker exec "$GW_ID" nginx -s reload
+            
+            # --- 2.5) (선택) 전환 검증: 현재 업스트림 확인 -----------------------------------
+            docker exec "$GW_ID" sh -lc 'apk add --no-cache curl 2>/dev/null || true; curl -skI https://dev.ko-ri.cloud/ | grep -i x-upstream || true'
+            
+            # --- 3) 활성 슬롯 기록 ------------------------------------------------------------
+            echo "$NEXT_SLOT" > "$ACTIVE_FILE"
+            
+            # --- 4) 드레인 대기(웹소켓/롱요청 보호) ------------------------------------------
+            SLEEP_DRAIN="${SLEEP_DRAIN:-20}"
+            echo "Drain wait ${SLEEP_DRAIN}s before removing inactive slot..."
+            sleep "$SLEEP_DRAIN"
+            
+            # --- 5) 이전 슬롯 정리 ------------------------------------------------------------
+            INACTIVE="app-${ACTIVE_SLOT}"
+            docker compose -p foreigner -f "$COMPOSE_APP" stop "$INACTIVE" || true
+            docker compose -p foreigner -f "$COMPOSE_APP" rm -f "$INACTIVE" || true
+            
+            # (보호) 혹시라도 둘 다 떠 있으면 비활성은 내려버림
+            if docker compose -p foreigner -f "$COMPOSE_APP" ps "$INACTIVE" | grep -q 'Up'; then
+            docker compose -p foreigner -f "$COMPOSE_APP" stop "$INACTIVE" || true
+            docker compose -p foreigner -f "$COMPOSE_APP" rm -f "$INACTIVE" || true
+            fi
+
+  cleanup-images:
+    if: github.event_name == 'push'
+    needs: [ deploy-app ]      # 배포 성공/실패와 무관하게
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune old images (keep 4 latest + any in-use)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.DEV_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            REPO="${{ secrets.DOCKERHUB_USERNAME }}/foreigner"
+            KEEP=4
+
+            # 실행/중지 컨테이너가 쓰는 이미지 목록 (보존)
+            ALL_IN_USE="$(docker ps -a --format '{{.Image}}' | grep "^${REPO}:" | sort -u || true)"
+
+            # 최신 4개 태그 (롤백 대비 보존)
+            KEEP_TAGS="$(
+              docker image ls "$REPO" --format '{{.Tag}} {{.CreatedAt}}' \
+              | sort -rk2 | awk '{print $1}' | head -n "$KEEP"
+            )"
+
+            # 레포의 모든 태그 중, in-use/최신4개 제외하고 삭제
+            docker image ls "$REPO" --format '{{.Repository}}:{{.Tag}}' \
+            | while read -r IMG; do
+              TAG="${IMG#*:}"
+              if printf '%s\n' "$ALL_IN_USE" | grep -qx "$IMG"; then
+                echo "keep (in-use)   $IMG"; continue
+              fi
+              if printf '%s\n' "$KEEP_TAGS" | grep -qx "$TAG"; then
+                echo "keep (recent)   $IMG"; continue
+              fi
+              docker rmi "$IMG" || true
+            done
+
+            # dangling 레이어 추가 정리
+            docker image prune -f || true
+
+            echo "Remaining images:"
+            docker image ls "$REPO" --format '{{.Repository}}:{{.Tag}}\t{{.CreatedSince}}' | sort -k2

@@ -1,0 +1,159 @@
+spring:
+  flyway:
+    enabled: false
+    baseline-on-migrate: true
+  config:
+    activate:
+      on-profile: local
+
+  messages:
+    basename: messages
+    encoding: UTF-8
+    fallback-to-system-locale: false   # ★ 이 줄 추가
+  thymeleaf:
+    encoding: UTF-8
+    prefix: classpath:/templates/
+    suffix: .html
+    check-template-location: true
+
+  mail:
+    host:  ${NCP_MAIL_HOST}        # 네이버 SMTP 서버 주소
+    port: 587                    # 네이버 SMTP 포트 번호
+    username:  ${NCP_EMAIL}    # 네이버 이메일
+    password: ${NCP_EMAIL_PASSWORD}
+    default-encoding: UTF-8
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true     # ★ 587 필수
+      mail.smtp.starttls.required: true
+      mail.smtp.ssl.enable: false
+      mail.smtp.ssl.trust: smtp.naver.com
+      mail.smtp.ssl.protocols: TLSv1.2
+      mail.debug: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
+      key:
+        prefix:
+          refreshToken: "refreshToken:"
+          blacklist: "blacklist:"
+          accessToken: "access_token"
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-expiration: 30
+  refresh-expiration: 10080
+
+
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: ${FEIGN_CONNECT_TIMEOUT}
+            readTimeout: ${FEIGN_READ_TIMEOUT}
+            loggerLevel: ${FEIGN_LOGGER_LEVEL}
+
+
+oauth:
+  google:
+    android:
+      client-id: ${ANDROID_CLIENT_ID}
+      redirect-uri: ${ANDROID_REDIRECT_URI}
+    ios:
+      client-id: ${IOS_CLIENT_ID}
+      redirect-uri: ${IOS_REDIRECT_URI}
+    web:
+      client-id: ${WEB_CLIENT_ID}
+      client-secret: ${WEB_CLIENT_SECRET}
+      redirect-uri: ${WEB_REDIRECT_URI}
+
+  apple:
+    issuer: https://appleid.apple.com
+    team-id: ${APPLE_TEAM_ID}
+    key-id: ${APPLE_KEY_ID}
+    client-id: ${APPLE_CLIENT_ID}
+    redirect-uri: ${APPLE_REDIRECT_URI}
+    private-key-pem: ${APPLE_PRIVATE_KEY_PEM}
+
+ncp:
+  s3:
+    access-key: ${NCP_ACCESS_KEY}
+    secret-key: ${NCP_SECRET_KEY}
+    region: kr-standard
+    endpoint: https://kr.object.ncloudstorage.com
+    bucket: ${NCP_BUCKET}
+  clova:
+    apiUrl: https://clovastudio.stream.ntruss.com/testapp/v1/chat-completions/HCX-003
+    apiKey: ${CLOVA_STUDIO_API_KEY}
+
+swagger:
+  server-url: http://localhost:8080
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+google:
+  cloud:
+    project:
+      id: ${GCP_PROJECT_ID}
+    translate:
+      api-key: ${GCP_TRANSLATE_API_KEY}
+
+  mail:
+    from: ${NAVER_HOST}
+    brand: ${APP_NAME}
+    code-ttl-minutes: 3
+
+  password:
+    reset:
+      ttl-minutes: 15
+      session-ttl-minutes: 5
+
+  api:
+    base-url: ${BASE_URL}
+
+cdn:
+  base-url: ${NCP_CDN_URL}
+
+firebase:
+  credentials:
+    json-string: ${FIREBASE_CREDENTIALS_JSON}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus, health, metrics
+  endpoint:
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: my-service
+
+app:
+  mail:
+    from: ${NAVER_HOST}
+    brand: ${APP_NAME}
+    code-ttl-minutes: 3

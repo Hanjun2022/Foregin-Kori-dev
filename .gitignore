@@ -1,0 +1,78 @@
+HELP.md
+.gradle
+build/
+!../gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IntelliJ / IDE
+.idea/
+
+# Gradle (캐시/산출물)
+.gradle/
+# Gradle Wrapper는 반드시 버전관리
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Java / Spring 일반 산출물·로그
+*.class
+*.log
+logs/
+tmp/
+*.tmp
+hs_err_pid*
+replay_pid*
+*.hprof
+
+# 테스트/리포트(있다면)
+.coverage
+jacoco.exec
+/build/reports/
+/build/test-results/
+
+# Docker / Compose / 시크릿
+.env
+.env.*
+!*.example
+docker-compose.override.yml
+*.pem
+*.key
+*.p12
+gcp-key.json
+
+docker-compose.yml

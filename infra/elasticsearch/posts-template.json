@@ -1,0 +1,73 @@
+{
+  "index_patterns": ["posts-lab-*"],
+  "priority": 500,
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "analysis": {
+        "filter": {
+          "en_possessive": { "type": "stemmer", "language": "possessive_english" },
+          "en_stop":       { "type": "stop",     "stopwords": "_english_" },
+          "en_stem":       { "type": "stemmer",  "language": "light_english" },
+          "en_syn": {
+            "type": "synonym_graph",
+            "synonyms": [
+              "travel, trip, journey",
+              "vacation, holiday",
+              "accommodation, lodging, hotel",
+              "visa, permit"
+            ]
+          }
+        },
+        "analyzer": {
+          "english_custom": {
+            "type": "custom",
+            "tokenizer": "standard",
+            "filter": ["lowercase","en_possessive","en_stop","en_syn","en_stem"]
+          },
+          "english_completion_exact": {
+            "type": "custom",
+            "tokenizer": "standard",
+            "filter": ["lowercase","en_possessive","en_stop","en_stem"]
+          }
+        }
+      }
+    },
+    "mappings": {
+      "dynamic": false,
+      "properties": {
+        "boardId":    { "type": "long" },
+        "userId":     { "type": "long" },
+        "createdAt":  { "type": "date", "format": "epoch_millis" },
+        "checkCount": { "type": "long" },
+
+        "content": {
+          "type": "text",
+          "analyzer": "english_custom",
+          "search_analyzer": "english_custom",
+          "fields": {
+            "asyt": { "type": "search_as_you_type" }
+          }
+        },
+
+        "contentSuggest": {
+          "type": "completion",
+          "analyzer": "english_custom",
+          "preserve_separators": true,
+          "preserve_position_increments": true,
+          "max_input_length": 100,
+          "contexts": [{ "name": "boardId", "type": "category" }]
+        },
+        "contentSuggestExact": {
+          "type": "completion",
+          "analyzer": "english_completion_exact",
+          "preserve_separators": true,
+          "preserve_position_increments": true,
+          "max_input_length": 100,
+          "contexts": [{ "name": "boardId", "type": "category" }]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,71 @@
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+
+<script>
+    let stompClient = null;
+    let currentRoomId = null;
+
+    function connectWs() {
+        const socket = new SockJS('http://localhost:8080/ws');
+        stompClient = Stomp.over(socket);
+
+        stompClient.connect({}, function(frame) {
+            console.log("STOMP Connected: " + frame);
+        }, function(error) {
+            console.error("STOMP connection error:", error);
+        });
+    }
+
+    async function createRoom(name, isGroup, participantIds) {
+        const res = await fetch('http://localhost:8080/rooms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, isGroup, participantIds })
+        });
+        const room = await res.json();
+        console.log("Created room:", room);
+        subscribeRoom(room.id);
+    }
+
+    function subscribeRoom(roomId) {
+        currentRoomId = roomId;
+        stompClient.subscribe('/topic/room/' + roomId, function(message) {
+            const msg = JSON.parse(message.body);
+            console.log("Received message:", msg);
+            renderMessage(msg);
+        });
+    }
+
+    function sendMessage(content, senderId) {
+        if (!stompClient || !currentRoomId) return;
+        const message = { roomId: currentRoomId, senderId, content };
+        stompClient.send("/app/chat.sendMessage", {}, JSON.stringify(message));
+    }
+
+    function renderMessage(msg) {
+        const chatBox = document.getElementById("chatBox");
+        const div = document.createElement("div");
+        div.textContent = `User ${msg.senderId}: ${msg.content}`;
+        chatBox.appendChild(div);
+    }
+
+    // 초기화
+    window.onload = function() {
+        connectWs();
+
+        document.getElementById("sendBtn").onclick = () => {
+            const msg = document.getElementById("msgInput").value;
+            sendMessage(msg, 1); // 테스트용 senderId=1
+        };
+
+        document.getElementById("createRoomBtn").onclick = () => {
+            // 예제: 그룹방 3명
+            createRoom("테스트 그룹방", true, [1,2,3]);
+        };
+    };
+</script>
+
+<div id="chatBox" style="border:1px solid #ccc; height:200px; overflow:auto;"></div>
+<input type="text" id="msgInput">
+<button id="sendBtn">Send</button>
+<button id="createRoomBtn">Create Room</button>

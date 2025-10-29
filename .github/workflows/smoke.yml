@@ -1,0 +1,51 @@
+name: smoke
+on:
+  workflow_dispatch:
+    inputs:
+      run_A:
+        description: "Run on A"
+        required: true
+        default: "false"
+      run_B:
+        description: "Run on B"
+        required: true
+        default: "false"
+      run_C:
+        description: "Run on C"
+        required: true
+        default: "true"   # 지금 C부터 점검하고 싶으면 기본 true
+
+jobs:
+  ping-A:
+    if: ${{ inputs.run_A == 'true' }}
+    runs-on: [self-hosted, prod, A]
+    steps:
+      - run: |
+          echo "hello from A"
+          echo "labels: self-hosted, prod, A"
+          whoami
+          uname -a
+          docker --version || true
+
+  ping-B:
+    if: ${{ inputs.run_B == 'true' }}
+    runs-on: [self-hosted, prod, B]
+    steps:
+      - run: |
+          echo "hello from B"
+          echo "labels: self-hosted, prod, B"
+          whoami
+          uname -a
+          docker --version || true
+
+  ping-C:
+    if: ${{ inputs.run_C == 'true' }}
+    runs-on: [self-hosted, prod, C]
+    steps:
+      - run: |
+          echo "hello from C"
+          echo "labels: self-hosted, prod, C"
+          whoami
+          uname -a
+          # C는 Docker 없어도 OK
+          docker --version || true

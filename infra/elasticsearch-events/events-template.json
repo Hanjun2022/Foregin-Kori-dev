@@ -1,0 +1,21 @@
+{
+  "index_patterns": ["events-*"],
+  "priority": 500,
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "dynamic": false,
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "user_id":    { "type": "keyword" },
+        "event":      { "type": "keyword" },
+
+        "device":     { "type": "keyword" },
+        "meta":       { "type": "object", "enabled": false }
+      }
+    }
+  }
+}

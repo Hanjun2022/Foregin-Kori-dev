@@ -1,0 +1,210 @@
+spring:
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  datasource:
+    url: jdbc:postgresql://db:5432/${DB_NAME}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      leak-detection-threshold: 20000
+
+  messages:
+    basename: messages
+    encoding: UTF-8
+    fallback-to-system-locale: false
+  thymeleaf:
+    encoding: UTF-8
+    prefix: classpath:/templates/
+    suffix: .html
+    check-template-location: true
+  mail:
+    host: ${GOOGLE_MAIL_HOST}
+    port: 587
+    username: ${GOOGLE_EMAIL}
+    password: ${GOOGLE_EMAIL_PASSWORD}
+    default-encoding: UTF-8
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true     # ★ 587 필수
+      mail.smtp.starttls.required: true
+      mail.smtp.ssl.enable: false
+      mail.smtp.ssl.trust: smtp.gmail.com
+      mail.smtp.ssl.protocols: TLSv1.2
+      mail.debug: false
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+      mail.smtp.quitwait: false
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST}
+      port: ${SPRING_DATA_REDIS_PORT}
+      password: ${SPRING_DATA_REDIS_PASSWORD}
+      key:
+        prefix:
+          refreshToken: "refreshToken:"
+          blacklist: "blacklist:"
+          accessToken: "access_token"
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: true
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-expiration: 10080
+  refresh-expiration: 10080
+
+
+cloud:
+  openfeign:
+    client:
+      config:
+        default:
+          connectTimeout: ${FEIGN_CONNECT_TIMEOUT}
+          readTimeout: ${FEIGN_READ_TIMEOUT}
+          loggerLevel: ${FEIGN_LOGGER_LEVEL}
+
+
+
+oauth:
+  google:
+    android:
+      client-id: ${ANDROID_CLIENT_ID}
+      redirect-uri: ${ANDROID_REDIRECT_URI}
+    ios:
+      client-id: ${IOS_CLIENT_ID}
+      redirect-uri: ${IOS_REDIRECT_URI}
+    web:
+      client-id: ${WEB_CLIENT_ID}
+      client-secret: ${WEB_CLIENT_SECRET}
+      redirect-uri: ${WEB_REDIRECT_URI}
+
+  apple:
+    issuer: https://appleid.apple.com
+    team-id: ${APPLE_TEAM_ID}
+    app-bundle-id: ${APPLE_APP_BUNDLE_ID}
+    key-id: ${APPLE_KEY_ID}
+    client-id: ${APPLE_CLIENT_ID}
+    redirect-uri: ${APPLE_REDIRECT_URI}
+    private-key-pem: ${APPLE_PRIVATE_KEY_PEM}
+
+ncp:
+  s3:
+    access-key: ${NCP_ACCESS_KEY}
+    secret-key: ${NCP_SECRET_KEY}
+    region: kr-standard
+    endpoint: https://kr.object.ncloudstorage.com
+    bucket: ${NCP_BUCKET_NAME}
+  clova:
+    apiUrl: https://clovastudio.stream.ntruss.com/testapp/v1/chat-completions/HCX-003
+    apiKey: ${CLOVA_STUDIO_API_KEY}
+
+swagger:
+  server-url: ${SERVER_URL}
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+google:
+  cloud:
+    project:
+      id: ${GCP_PROJECT_ID}
+
+
+logging:
+  level:
+    root: INFO
+
+    # 프레임워크 소음 차단
+    org.hibernate.SQL: OFF
+    org.hibernate.orm.jdbc.bind: OFF
+    org.springframework.web: INFO
+    org.springframework.http.converter: INFO
+
+    # WebSocket/메시징은 운영에서 WARN 이상
+    org.springframework.web.socket: WARN
+    org.springframework.messaging: WARN
+    org.apache.tomcat.websocket: WARN
+
+    # 애플리케이션 커스텀 로거(운영 기본 INFO)
+    core: INFO
+    core.global.config.JwtTokenFilter: INFO
+    core.global.search: INFO
+
+# 운영에서는 에러 본문 노출 금지
+server.error.include-message: always
+server.error.include-binding-errors: always
+
+app:
+  mail:
+    from: ${NAVER_HOST}
+    brand: ${APP_NAME}
+    code-ttl-minutes: 3
+  password:
+    reset:
+      ttl-minutes: 15
+      session-ttl-minutes: 5
+
+  api:
+    base-url: ${BASE_URL}
+
+cdn:
+  base-url: ${NCP_CDN_URL}
+
+firebase:
+  credentials:
+    json-string: ${FIREBASE_CREDENTIALS_JSON}
+
+management:
+  health:
+    mail:
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: prometheus, health, metrics, info, loggers
+  endpoint:
+    prometheus:
+      enabled: true
+    health:
+      cache:
+        time-to-live: 10s
+      show-details: always
+
+  metrics:
+    tags:
+      application: my-service
+      app: social-chat
+    distribution:
+      percentiles-histogram:
+        http:
+          server:
+            requests: true
+
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+resilience4j:
+  retry:
+    instances:
+      mailSend:
+        max-attempts: 3
+        wait-duration: 1s
+        retry-exceptions:
+          - jakarta.mail.MessagingException
