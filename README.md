@@ -2,8 +2,13 @@
 
 > Connect with people in Korea and share life together
 
-언어 장벽 없이 한국에서 새로운 친구를 만나고, 그룹 스페이스에서 관심사를 공유하며, AI 기반 번역으로 소통하는 글로벌 소셜 플랫폼입니다.
+#언어 장벽 없이 한국에서 새로운 친구를 만나고, 그룹 스페이스에서 관심사를 공유하며, AI 기반 번역으로 소통하는 글로벌 소셜 플랫폼입니다.
+
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/24c17924-2b4e-450d-b2f3-aef24d82db1e" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/9f7dee44-c02d-44ff-a37d-929c4984dc1d" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/f8345d7c-6fbc-4eda-ba3c-c7f011dc62d6" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/8c618e24-2a6f-4573-8d58-389914ab2af5" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/0185b87a-33dc-4c8b-a5a8-206ae6eab0ef" />
 
 
 ## ✨ Key Features
