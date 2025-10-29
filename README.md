@@ -4,6 +4,8 @@
 
 ###  언어 장벽 없이 한국에서 새로운 친구를 만나고, 그룹 스페이스에서 관심사를 공유하며, AI 기반 번역으로 소통하는 글로벌 소셜 플랫폼입니다.
 
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/83117c6f-b0bc-4db9-a2b8-0e488dd8a33b" />
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/24c17924-2b4e-450d-b2f3-aef24d82db1e" />
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/9f7dee44-c02d-44ff-a37d-929c4984dc1d" />
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/f8345d7c-6fbc-4eda-ba3c-c7f011dc62d6" />
@@ -46,84 +48,85 @@
 - Purpose (Study, Work, Travel, etc.) 설정
 - 관심사 태그 시스템
 
+
+
 ## 🛠 Tech Stack
 
-### Backend
+### **Frontend**
+![React Native](https://img.shields.io/badge/React%20Native-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![Expo](https://img.shields.io/badge/Expo-000000?style=for-the-badge&logo=expo&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+![Axios](https://img.shields.io/badge/Axios-5A29E4?style=for-the-badge&logo=axios&logoColor=white)
+![Recoil](https://img.shields.io/badge/Recoil-3578E5?style=for-the-badge&logo=react&logoColor=white)
+![Styled Components](https://img.shields.io/badge/Styled--Components-DB7093?style=for-the-badge&logo=styled-components&logoColor=white)
+
+- **Framework**: React Native (Expo 기반 하이브리드 앱)  
+- **Language**: TypeScript  
+- **State Management**: Recoil  
+- **Styling**: Styled-components  
+- **API 통신**: Axios  
+
+---
+
+### **Backend**
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)
 ![Spring Cloud](https://img.shields.io/badge/Spring%20Cloud-6DB33F?style=for-the-badge&logo=spring&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 
-- **Framework**: Spring Boot, Spring Cloud (MSA)
-- **Database**: PostgreSQL, MongoDB
-- **Cache**: Redis
-- **Template Engine**: Thymeleaf
-
-### Authentication & Security
-![JWT](https://img.shields.io/badge/JWT-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white)
-![OAuth2.0](https://img.shields.io/badge/OAuth2.0-EB5424?style=for-the-badge&logo=auth0&logoColor=white)
-
-- **JWT** (Access Token, Refresh Token)
-- **OAuth 2.0** (Google Login, Apple Login)
-
-### Infrastructure & Cloud
-![AWS S3](https://img.shields.io/badge/AWS%20S3-569A31?style=for-the-badge&logo=amazons3&logoColor=white)
-![NCP](https://img.shields.io/badge/NCP-03C75A?style=for-the-badge&logo=naver&logoColor=white)
-
-- **AWS S3**: 이미지 저장소 (Presigned URL 방식)
-- **NCP Clova**: AI 번역 서비스
-- **SMTP**: 이메일 인증 (비밀번호 재설정, 이메일 인증)
-
-### Architecture
-- **MSA (Microservices Architecture)** with Spring Cloud
-- **RESTful API** 설계
-- **JWT 기반 인증/인가**
-
-## 📱 Screenshots
-
-<table>
-  <tr>
-    <td><img src="screenshot1.png" alt="Join Group Spaces" width="200"/></td>
-    <td><img src="screenshot2.png" alt="Share Life in Korea" width="200"/></td>
-    <td><img src="screenshot3.png" alt="Auto-Translate Chat" width="200"/></td>
-  </tr>
-  <tr>
-    <td align="center">Join Group Spaces</td>
-    <td align="center">Community Feed</td>
-    <td align="center">Auto-Translate Chat</td>
-  </tr>
-  <tr>
-    <td><img src="screenshot4.png" alt="Find Your People" width="200"/></td>
-    <td><img src="screenshot5.png" alt="Life's better together" width="200"/></td>
-    <td><img src="screenshot6.png" alt="Find people in Korea" width="200"/></td>
-  </tr>
-  <tr>
-    <td align="center">AI Friend Suggestions</td>
-    <td align="center">Connect & Chat</td>
-    <td align="center">Discover Community</td>
-  </tr>
-</table>
-
-<img width="1568" height="754" alt="{5348397D-717F-492A-B0C5-0F329A21F261}" src="https://github.com/user-attachments/assets/dc74fad9-46c1-4a35-bb57-ea53badfa1f0" />
-
-### Prerequisites
-- Java 17+
-- PostgreSQL 14+
-- MongoDB 5+
-- Redis 7+
-
-
-
-3. Run the application
-```bash
-./gradlew bootRun
-```
-
-## 📧 Contact
-
-Project Link: [https://github.com/yourusername/kori](https://github.com/yourusername/kori)
+- **Framework**: Spring Boot, Spring Cloud (MSA)  
+- **Database**: PostgreSQL (RDB), MongoDB (NoSQL)  
+- **Cache**: Redis  
+- **Template Engine**: Thymeleaf  
+- **Asynchronous Message Broker**: STOMP WebSocket  
+- **Batch / Scheduler**: Spring Scheduler  
 
 ---
 
-**Life's better together** 🌏✨
+### **Authentication & Security**
+![JWT](https://img.shields.io/badge/JWT-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white)
+![OAuth2.0](https://img.shields.io/badge/OAuth2.0-EB5424?style=for-the-badge&logo=auth0&logoColor=white)
+![Spring Security](https://img.shields.io/badge/Spring%20Security-6DB33F?style=for-the-badge&logo=springsecurity&logoColor=white)
+
+- **JWT** (Access Token, Refresh Token)  
+- **OAuth 2.0** (Google / Apple 로그인)  
+- **Spring Security** 기반 인증/인가  
+
+---
+
+### **Infrastructure & Cloud**
+![Naver Cloud](https://img.shields.io/badge/Naver%20Cloud-03C75A?style=for-the-badge&logo=naver&logoColor=white)
+![AWS S3](https://img.shields.io/badge/AWS%20S3-569A31?style=for-the-badge&logo=amazons3&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![NGINX](https://img.shields.io/badge/NGINX-009639?style=for-the-badge&logo=nginx&logoColor=white)
+![ElasticSearch](https://img.shields.io/badge/ElasticSearch-005571?style=for-the-badge&logo=elasticsearch&logoColor=white)
+
+- **Server Infra**: Naver Cloud Platform (NCP)  
+- **Object Storage**: NCP Object Storage / AWS S3  
+- **Search Engine**: ElasticSearch  
+- **CI/CD**: GitHub Actions + Docker  
+- **Reverse Proxy**: Nginx  
+- **Monitoring**: Elastic Stack (ELK)  
+
+---
+
+### **AI & External Services**
+![Clova](https://img.shields.io/badge/Naver%20Clova-03C75A?style=for-the-badge&logo=naver&logoColor=white)
+![Google Cloud Translation](https://img.shields.io/badge/Google%20Cloud%20Translate-4285F4?style=for-the-badge&logo=googletranslate&logoColor=white)
+![SMTP](https://img.shields.io/badge/SMTP-FF6600?style=for-the-badge&logo=gmail&logoColor=white)
+
+- **NCP Clova Translate API** – 실시간 번역 서비스  
+- **Google Cloud Translation** – 다국어 메시지 처리  
+- **Naver SMTP** – 이메일 인증/알림 발송  
+
+---
+
+### **Collaboration & Dev Tools**
+![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)
+![Figma](https://img.shields.io/badge/Figma-F24E1E?style=for-the-badge&logo=figma&logoColor=white)
+![Notion](https://img.shields.io/badge/Notion-000000?style=for-the-badge&logo=notion&logoColor=white)
+
+- **Design & Mockup**: Figma  
+- **Docs & Planning**: Notion  
+- **Version Control**: GitHub  
